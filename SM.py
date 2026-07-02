@@ -5,181 +5,169 @@ import pandas as pd
 import requests
 import random
 
-# Page UI Config
+# Core App Layout Config
 st.set_page_config(
-    page_title="Pro Stock Portfolio Dashboard",
-    page_icon="📊",
+    page_title="Institutional Market Terminal",
+    page_icon="⚡",
     layout="wide"
 )
 
-# Dark Premium UI Theme Customization
+# Dark Premium UI Card Layout Injector
 st.markdown("""
     <style>
     div[data-testid="metric-container"] {
         background-color: #111827;
         border: 1px solid #1f2937;
-        padding: 16px;
-        border-radius: 12px;
+        padding: 18px;
+        border-radius: 10px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-    div[data-testid="stSidebar"] {
-        background-color: #0b0f19;
-    }
+    div[data-testid="stSidebar"] { background-color: #0b0f19; }
+    h1, h2, h3 { font-family: 'Inter', sans-serif; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🎛️ Multi-Stock Analytics Terminal")
-st.markdown("Select multiple global assets to pull live metrics and cross-compare pricing charts.")
+st.title("⚡ Multi-Asset Exchange Dashboard")
+st.markdown("Select or input international assets to dynamically render price movements.")
 
-# 🌟 BROWSER AGENT ROTATOR TO BYPASS THE 429 DEPLOYMENT LIMITS
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+# Browser Emulation Identity Rotator
+AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
 ]
 
-@st.cache_data(ttl=300) # Prevents spamming Yahoo API on every toggle
-def get_stock_data(tickers, period):
+@st.cache_data(ttl=180)  # Caching preserves API bandwidth limits on cloud clusters
+def download_market_history(tickers, period):
+    # Select intraday intervals for micro-horizons, default to daily for macro views
     interval = "5m" if period in ["1d", "5d"] else "1d"
     
     session = requests.Session()
-    session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+    session.headers.update({'User-Agent': random.choice(AGENTS)})
     
-    combined_df = pd.DataFrame()
-    meta_infos = {}
+    df_accumulator = pd.DataFrame()
     
-    for t in tickers:
+    for symbol in tickers:
         try:
-            stock = yf.Ticker(t, session=session)
-            hist = stock.history(period=period, interval=interval)
-            if not hist.empty:
-                combined_df[t] = hist['Close']
-                # Graceful extraction of current details without throwing core errors
-                try:
-                    meta_infos[t] = stock.info
-                except:
-                    meta_infos[t] = {}
+            tracker = yf.Ticker(symbol, session=session)
+            # Fetch data using history to bypass metadata parsing blocks
+            historical_records = tracker.history(period=period, interval=interval)
+            if not historical_records.empty:
+                df_accumulator[symbol] = historical_records['Close']
         except Exception:
-            pass # Keep iterating over remaining valid symbols
+            pass
             
-    return combined_df, meta_infos
+    return df_accumulator
 
-# --- SIDEBAR CONTROLS ---
-st.sidebar.header("🎯 Asset Watchlist Configuration")
+# --- SIDEBAR CONTROL PANEL ---
+st.sidebar.header("🎯 Watchlist Management")
 
-# Clean Mapping of Ticker Names to Symbols
-ticker_directory = {
+ticker_preset_vault = {
     "Apple Inc. (US)": "AAPL",
     "Microsoft Corp. (US)": "MSFT",
     "NVIDIA Corporation (US)": "NVDA",
     "Tesla Inc. (US)": "TSLA",
     "Reliance Industries (India)": "RELIANCE.NS",
-    "Tata Consultancy (India)": "TCS.NS",
-    "Infosys Ltd (India)": "INFY.NS",
-    "Sony Group (Japan)": "SONY"
+    "Tata Consultancy Services (India)": "TCS.NS",
+    "Infosys Limited (India)": "INFY.NS"
 }
 
-# The Multi-Select Dropdown
-selected_display_names = st.sidebar.multiselect(
+chosen_presets = st.sidebar.multiselect(
     "Choose Stocks to Monitor:",
-    options=list(ticker_directory.keys()),
+    options=list(ticker_preset_vault.keys()),
     default=["Apple Inc. (US)", "NVIDIA Corporation (US)"]
 )
 
-# Convert mapped display names to active symbols
-active_tickers = [ticker_directory[name] for name in selected_display_names]
+# Convert friendly names to actual tickers
+active_tickers = [ticker_preset_vault[name] for name in chosen_presets]
 
-# Text entry to type custom alternative tickers manually
-custom_symbols = st.sidebar.text_input("➕ Or add alternative symbols (Comma separated, e.g., AMD, AMZN, GOOG)")
-if custom_symbols:
-    for custom_t in custom_symbols.split(","):
-        clean_t = custom_t.strip().upper()
-        if clean_t and clean_t not in active_tickers:
-            active_tickers.append(clean_t)
+# Manual Override Text Field
+custom_inputs = st.sidebar.text_input("➕ Enter Custom Tickers (Comma separated, e.g., AMD, AMZN)")
+if custom_inputs:
+    for custom_item in custom_inputs.split(","):
+        clean_symbol = custom_item.strip().upper()
+        if clean_symbol and clean_symbol not in active_tickers:
+            active_tickers.append(clean_symbol)
 
-# Time Frame Selector
 st.sidebar.markdown("---")
-time_horizon = st.sidebar.radio(
-    "📈 Performance Horizon",
+selected_horizon = st.sidebar.radio(
+    "📅 Timeframe Horizon",
     options=["1D", "5D", "1Mo", "6Mo", "1Y", "5Y"],
     index=4
 ).lower()
 
-# --- MAIN SCREEN LOGIC ---
+# --- MAIN RENDER LOGIC ---
 if not active_tickers:
-    st.info("Select or enter a ticker symbol in the sidebar menu to get started.")
+    st.info("💡 Please choose or type ticker symbols in the left sidebar configuration panel.")
 else:
-    with st.spinner("Streaming real-time financial tracking modules..."):
-        price_history, market_meta = get_stock_data(active_tickers, time_horizon)
+    with st.spinner("Establishing safe handshake tunnel with data indexers..."):
+        price_dataframe = download_market_history(active_tickers, selected_horizon)
         
-    if price_history.empty:
-        st.error("Could not fetch data for selected entries. Verify internet connectivity or ticker naming conventions.")
+    if price_dataframe.empty:
+        st.error("❌ Data retrieval failed. The server IP is temporarily throttled, or the ticker symbols are invalid.")
+        st.info("💡 Try appending exchange suffixes if necessary (e.g., use `.NS` for National Stock Exchange India assets like `RELIANCE.NS`).")
     else:
-        # Display Current Pricing Cards dynamically inside columns
-        st.subheader("⚡ Real-time Market Snapshot")
-        cols = st.columns(len(active_tickers))
+        # Generate Row of Metric Widgets Dynamically
+        st.subheader("📊 Real-Time Pricing Summary")
+        metric_cols = st.columns(len(active_tickers))
         
-        for idx, ticker in enumerate(active_tickers):
-            if ticker in price_history.columns:
-                hist_series = price_history[ticker].dropna()
-                if not hist_series.empty:
-                    latest_price = hist_series.iloc[-1]
-                    opening_price = hist_series.iloc[0]
-                    delta = latest_price - opening_price
-                    delta_pct = (delta / opening_price) * 100
+        for position, ticker in enumerate(active_tickers):
+            if ticker in price_dataframe.columns:
+                clean_series = price_dataframe[ticker].dropna()
+                if not clean_series.empty:
+                    current_valuation = clean_series.iloc[-1]
+                    starting_valuation = clean_series.iloc[0]
                     
-                    info_dict = market_meta.get(ticker, {})
-                    currency = info_dict.get('currency', 'USD')
-                    company_label = info_dict.get('shortName', ticker)
+                    net_deviation = current_valuation - starting_valuation
+                    percentage_deviation = (net_deviation / starting_valuation) * 100
                     
-                    with cols[idx]:
+                    with metric_cols[position]:
                         st.metric(
-                            label=company_label,
-                            value=f"{latest_price:,.2f} {currency}",
-                            delta=f"{delta:+,.2f} ({delta_pct:+.2f}%)"
+                            label=f"📈 {ticker}",
+                            value=f"{current_valuation:,.2f}",
+                            delta=f"{net_deviation:+,.2f} ({percentage_deviation:+.2f}%)"
                         )
 
-        # Main Comparison Visual Graph
+        # Plotly Comparison Rendering
         st.markdown("---")
-        st.subheader(f"🔄 Relative Historical Trends ({time_horizon.upper()})")
+        st.subheader(f"🔄 Comparative Price Analytics ({selected_horizon.upper()})")
         
-        fig = go.Figure()
+        should_normalize = st.checkbox("Normalize baseline to % Return (Enables direct performance asset comparison)", value=False)
         
-        # Decide if we normalize the performance to compare percentage changes rather than absolute prices
-        normalize_data = st.checkbox("Normalize Prices (% Return Change relative to baseline timeline start)", value=False)
+        chart_fig = go.Figure()
         
-        for ticker in price_history.columns:
-            series = price_history[ticker].dropna()
-            if not series.empty:
-                y_values = series
-                hover_format = ':,.2f'
+        for ticker in price_dataframe.columns:
+            target_series = price_dataframe[ticker].dropna()
+            if not target_series.empty:
+                plotting_y = target_series
+                tooltip_format = ':,.2f'
                 
-                if normalize_data:
-                    y_values = ((series / series.iloc[0]) - 1) * 100
-                    hover_format = '+.2f%'
+                if should_normalize:
+                    plotting_y = ((target_series / target_series.iloc[0]) - 1) * 100
+                    tooltip_format = '+.2f%'
                 
-                fig.add_trace(go.Scatter(
-                    x=series.index,
-                    y=y_values,
+                chart_fig.add_trace(go.Scatter(
+                    x=target_series.index,
+                    y=plotting_y,
                     mode='lines',
                     name=ticker,
                     line=dict(width=2.5),
-                    hovertemplate=f'<b>{ticker}</b>: %{{y{hover_format}}}<extra></extra>'
+                    hovertemplate=f'<b>{ticker}</b>: %{{y{tooltip_format}}}<extra></extra>'
                 ))
                 
-        fig.update_layout(
+        chart_fig.update_layout(
             template='plotly_dark',
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
             margin=dict(l=10, r=10, t=10, b=10),
-            height=500,
+            height=480,
             xaxis=dict(showgrid=True, gridcolor='#232a3b'),
             yaxis=dict(
                 showgrid=True, 
-                gridcolor='#232a3b', 
-                title="% Change" if normalize_data else "Raw Currency Price"
+                gridcolor='#232a3b',
+                title="% Growth" if should_normalize else "Closing Value"
             ),
             hovermode="x unified"
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(chart_fig, use_container_width=True)
